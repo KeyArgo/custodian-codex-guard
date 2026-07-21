@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "custodian-codex-guard"
+version = "0.1.0"
+description = "Custodian Guard for OpenAI Codex — typed action risk classification, fail-closed enforcement, and hash-chained receipts for Codex tool calls."
+requires-python = ">=3.11"
+readme = "README.md"
+license = "MIT"
+authors = [
+    {name = "InovinLabs", email = "hello@inovinlabs.com"},
+]
+keywords = ["ai", "agent", "codex", "openai", "security", "guardrails", "mcp"]
+dependencies = [
+    "custodian-kernel>=0.4.0,<0.5",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://getcustodian.xyz"
+Repository = "https://github.com/KeyArgo/custodian-codex-guard"
+"Custodian kernel" = "https://github.com/KeyArgo/custodian-kernel"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+custodian-codex-guard-mcp = "custodian.codex_guard.mcp_server:main"
+custodian-codex = "custodian.codex_guard.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["custodian.codex_guard*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"custodian.codex_guard" = ["*.md"]
