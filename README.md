@@ -20,6 +20,18 @@ This plugin is generic. It does not know about any particular website, IDE,
 or operator. A site or IDE is a client of the MCP boundary, never part of the
 kernel.
 
+## How Codex and GPT-5.6 were used
+
+Codex (running GPT-5.6) implemented the MCP server and the typed action
+bridge, adversarially tested its own classifier against deliberately
+mislabeled and disguised commands, found and fixed relative-workspace
+resolution edge cases, and built the deterministic judge demo
+(`scripts/codex-guard-demo.py`) and regression tests. GPT-5.6 does not run
+inside the enforcement path itself — classification is deterministic, typed
+rules over the tool name and arguments, checked on every request — so there
+is nothing here a model could talk its way around. That is a deliberate
+design choice made *with* Codex during development, not a limitation.
+
 ## Install for judging
 
 Python 3.11 or later:
