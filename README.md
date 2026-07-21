@@ -25,18 +25,22 @@ kernel.
 Python 3.11 or later:
 
 ```bash
-python -m venv .venv
 # Linux/macOS
+python3 -m venv .venv
 . .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
+# Windows PowerShell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
 python -m pip install -e .
 custodian-codex setup
 custodian-codex doctor
 ```
 
-`pip install -e .` pulls in `custodian-kernel>=0.4.0,<0.5` automatically —
-nothing else to install first. Start a new Codex thread after `setup` so it
-loads the plugin. The plugin manifest is at
+`pip install -e .` pulls in `custodian-kernel` (pinned to the exact commit
+this was built and verified against — see `pyproject.toml`; 0.4.0 isn't on
+PyPI yet) automatically, nothing else to install first. Start a new Codex
+thread after `setup` so it loads the plugin. The plugin manifest is at
 `plugins/custodian-codex-guard/.codex-plugin/plugin.json`; its governance
 skill is at `plugins/custodian-codex-guard/skills/govern-codex/SKILL.md`.
 
