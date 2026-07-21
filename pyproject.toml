@@ -18,7 +18,7 @@ dependencies = [
     # yet -- PyPI's custodian-kernel tops out at 0.3.1, which predates the
     # control plane. Pinned to the exact commit this was built and verified
     # against; switch to a plain PyPI version constraint once 0.4.0 ships.
-    "custodian-kernel @ git+https://github.com/KeyArgo/custodian-kernel.git@f566b2f",
+    "custodian-kernel @ git+https://github.com/KeyArgo/custodian-kernel.git@a445835",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -35,6 +35,15 @@ Repository = "https://github.com/KeyArgo/custodian-codex-guard"
 "Custodian kernel" = "https://github.com/KeyArgo/custodian-kernel"
 
 [project.optional-dependencies]
+# Codex Guard itself never imports paladin (see custodian-kernel's own
+# architecture-boundary test -- the kernel and its adapters stay
+# brand-neutral; paladin:// is only ever regex-detected, never resolved
+# here). This extra exists purely to pass the choice through: install with
+# `pip install -e ".[paladin]"` if you also want the credential vault/egress
+# broker custodian-kernel itself ships as an optional extra.
+paladin = [
+    "custodian-kernel[paladin] @ git+https://github.com/KeyArgo/custodian-kernel.git@a445835",
+]
 dev = [
     "pytest",
 ]
