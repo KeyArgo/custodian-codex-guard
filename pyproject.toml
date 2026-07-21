@@ -14,7 +14,11 @@ authors = [
 ]
 keywords = ["ai", "agent", "codex", "openai", "security", "guardrails", "mcp"]
 dependencies = [
-    "custodian-kernel>=0.4.0,<0.5",
+    # 0.4.0 (the control-plane release this adapter needs) is not on PyPI
+    # yet -- PyPI's custodian-kernel tops out at 0.3.1, which predates the
+    # control plane. Pinned to the exact commit this was built and verified
+    # against; switch to a plain PyPI version constraint once 0.4.0 ships.
+    "custodian-kernel @ git+https://github.com/KeyArgo/custodian-kernel.git@f566b2f",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
