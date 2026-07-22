@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "custodian-codex-guard"
-version = "0.1.0"
+version = "0.1.1"
 description = "Custodian Guard for OpenAI Codex — typed action risk classification, fail-closed enforcement, and hash-chained receipts for Codex tool calls."
 requires-python = ">=3.11"
 readme = "README.md"
@@ -53,4 +53,17 @@ include = ["custodian.codex_guard*"]
 namespaces = true
 
 [tool.setuptools.package-data]
-"custodian.codex_guard" = ["*.md"]
+# Explicit paths, not a "bundled_plugin/**/*" glob -- Python's glob (which
+# setuptools package-data uses) never matches dotfiles/dot-directories with
+# `*`, even inside `**`, so a glob here silently drops exactly the files
+# that matter: .agents/plugins/marketplace.json, .mcp.json, .codex-plugin/
+# plugin.json. Confirmed by inspecting a built wheel -- the glob version
+# included the two .md files and silently dropped all three dotfile paths.
+"custodian.codex_guard" = [
+    "*.md",
+    "bundled_plugin/.agents/plugins/marketplace.json",
+    "bundled_plugin/plugins/custodian-codex-guard/.mcp.json",
+    "bundled_plugin/plugins/custodian-codex-guard/.codex-plugin/plugin.json",
+    "bundled_plugin/plugins/custodian-codex-guard/README.md",
+    "bundled_plugin/plugins/custodian-codex-guard/skills/govern-codex/SKILL.md",
+]

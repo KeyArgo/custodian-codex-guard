@@ -22,10 +22,21 @@ def _command_available(name: str) -> bool:
 
 
 def _repo_root() -> Path | None:
+    """Find the directory containing `.agents/plugins/marketplace.json`.
+
+    A git checkout has this at the repo root. A plain `pip install` has no
+    checkout at all -- the marketplace file and the plugin it points at
+    (`plugins/custodian-codex-guard/`) ship as package data instead, under
+    `bundled_plugin/`, mirroring the same relative layout so the
+    marketplace.json's `./plugins/custodian-codex-guard` source path
+    resolves unchanged either way."""
     candidates = [Path.cwd(), *Path(__file__).resolve().parents]
     for candidate in candidates:
         if (candidate / ".agents" / "plugins" / "marketplace.json").is_file():
             return candidate
+    bundled = Path(__file__).resolve().parent / "bundled_plugin"
+    if (bundled / ".agents" / "plugins" / "marketplace.json").is_file():
+        return bundled
     return None
 
 
