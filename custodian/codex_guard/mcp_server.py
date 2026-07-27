@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,17 @@ from .receipts import ReceiptChain
 from custodian.control.policy import ApprovalPolicy, Proposal
 from custodian.control.filesystem_policy import FilesystemPolicy
 from custodian.control.ledger_access_policy import LedgerAccessPolicy
+from custodian.control.settings import ControlSettingsStore
+
+
+def _server_version() -> str:
+    """Return the version of the installed distribution serving this process."""
+    try:
+        return metadata.version("custodian-codex-guard")
+    except metadata.PackageNotFoundError:
+        # Source checkouts are useful for development handshakes, but only an
+        # installed release has authoritative package metadata.
+        return "source"
 
 
 def _state_dir() -> Path:
@@ -21,6 +33,19 @@ def _state_dir() -> Path:
 
 
 def _text_result(value: dict[str, Any], *, is_error: bool = False) -> dict[str, Any]:
+    settings = ControlSettingsStore(_state_dir() / "control-settings.json").load()
+    if (
+        settings.visibility == "quiet"
+        and value.get("verdict") in {"autonomous", "approved"}
+    ):
+        # Keep the machine-enforced decision and evidence, but omit explanatory
+        # prose that merely tells the model an ordinary gate passed. Hooks are
+        # already silent for allowed actions; this makes direct MCP use match.
+        value = {
+            key: value[key] for key in (
+                "verdict", "action_kind", "enforcement_required", "receipt",
+            ) if key in value
+        }
     return {
         "content": [{"type": "text", "text": json.dumps(value, sort_keys=True)}],
         "structuredContent": value,
@@ -96,7 +121,19 @@ def evaluate_guard_action(args: dict[str, Any], *, harness: str = "codex") -> di
         fs_config = FilesystemPolicy(_state_dir() / "filesystem-policy.json").fence_config(
             harness=harness, model=model, access=access,
             inherited_allow=[args.get("workspace", "")],
-            inherited_deny=["~/.ssh", "~/.aws", "~/.config/gcloud", "~/.kube"],
+            # `~/.codex` (and `~/.claude`) hold the guard's own hook wiring and
+            # policy; fencing them here stops a bash redirect like
+            # `echo ... >> ~/.codex/config.toml` from disabling the guard the way
+            # only an apply_patch write was already caught (guard.py
+            # _SENSITIVE_WRITE_PATH). Self-protection, not user data.
+            # OpenCode's guard plugin lives under `~/.config/opencode/plugins/`
+            # (XDG convention, unlike Codex/Claude's direct dotfile homes) --
+            # see opencode_guard/cli.py's _plugin_path(). Same bash-redirect
+            # self-disable risk applies there too. This literal doesn't
+            # follow a custom $XDG_CONFIG_HOME override, matching the other
+            # entries here, which are also plain literals.
+            inherited_deny=["~/.ssh", "~/.aws", "~/.config/gcloud", "~/.kube",
+                            "~/.codex", "~/.claude", "~/.config/opencode"],
         )
         decision = evaluate_action(
             tool=args.get("tool", ""), action_kind=requested_kind,
@@ -133,6 +170,12 @@ def evaluate_guard_action(args: dict[str, Any], *, harness: str = "codex") -> di
             )
             store = ApprovalStore(_state_dir())
             approval_id = args.get("approval_id")
+            # Hook-based harnesses can't replay an approval_id through a tool
+            # call, so bind the identical re-run to an out-of-band operator
+            # approval by its digest instead. Only ever finds an approval the
+            # operator already granted for this exact action + requester.
+            if not approval_id:
+                approval_id = store.find_approved(digest=digest, requester=requester)
             if approval_id:
                 store.consume(approval_id, digest=digest, requester=requester)
                 decision.update(verdict="approved",
@@ -205,7 +248,10 @@ def handle(method: str, params: dict[str, Any]) -> dict[str, Any] | None:
         return {
             "protocolVersion": params.get("protocolVersion", "2025-06-18"),
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "custodian-codex-guard", "version": "0.1.0"},
+            "serverInfo": {
+                "name": "custodian-codex-guard",
+                "version": _server_version(),
+            },
         }
     if method == "ping":
         return {}

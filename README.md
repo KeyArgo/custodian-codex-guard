@@ -1,104 +1,69 @@
-# Custodian Guard for Codex
+# Custodian Codex Guard
 
-*(OpenAI Build Week, July 2026)*
+Policy guard for Codex CLI. Evaluates every coding-agent action (read, write,
+execute, network, package, approval) before execution — fail-closed, evidence-
+preserving, and independent of the model or approval backend.
 
-A capability firewall for coding agents. Codex can inspect, test, and edit
-inside an approved workspace; credential use, network operations, destructive
-commands, production changes, money movement, and governance changes stop at a
-human-approval boundary. Every decision produces a value-free HMAC hash-chained
-receipt. Classification is deterministic — typed action-kind rules over the
-tool name and arguments, not a model call — so a mislabeled or adversarial
-proposal can't talk its way past the boundary by re-describing itself.
+Watch the demo: [Custodian Codex Guard: A Safety Layer for AI Coding
+Agents](https://youtu.be/lnIwDIbzZf0).
 
-This is the Build Week contribution specifically: the Codex-facing MCP server,
-the policy bridge, the receipts CLI, and the governance skill. It depends on
-[`custodian-kernel`](https://github.com/KeyArgo/custodian-kernel) — the
-policy engine, adapter pipeline, and approval/filesystem/ledger-access
-policies — which is agent-agnostic and predates this Build Week.
+## Install
 
-This plugin is generic. It does not know about any particular website, IDE,
-or operator. A site or IDE is a client of the MCP boundary, never part of the
-kernel.
-
-## How Codex and GPT-5.6 were used
-
-Codex (running GPT-5.6) implemented the MCP server and the typed action
-bridge, adversarially tested its own classifier against deliberately
-mislabeled and disguised commands, found and fixed relative-workspace
-resolution edge cases, and built the deterministic judge demo
-(`scripts/codex-guard-demo.py`) and regression tests. GPT-5.6 does not run
-inside the enforcement path itself — classification is deterministic, typed
-rules over the tool name and arguments, checked on every request — so there
-is nothing here a model could talk its way around. That is a deliberate
-design choice made *with* Codex during development, not a limitation.
-
-## Install for judging
-
-Python 3.11 or later:
+Custodian Codex Guard 0.1.2 supports Linux and macOS with Python 3.11 through
+3.13. Windows is not supported by this release because it depends on Custodian
+Kernel 0.4.1. Windows support is planned with Custodian Kernel 0.4.2.
 
 ```bash
-# Linux/macOS
-python3 -m venv .venv
-. .venv/bin/activate
-# Windows PowerShell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-
-python -m pip install -e .
+python -m pip install custodian-codex-guard
 custodian-codex setup
 custodian-codex doctor
 ```
 
-`pip install -e .` pulls in `custodian-kernel` (pinned to the exact commit
-this was built and verified against — see `pyproject.toml`; 0.4.0 isn't on
-PyPI yet) automatically, nothing else to install first. Start a new Codex
-thread after `setup` so it loads the plugin. The plugin manifest is at
-`plugins/custodian-codex-guard/.codex-plugin/plugin.json`; its governance
-skill is at `plugins/custodian-codex-guard/skills/govern-codex/SKILL.md`.
+Requires `custodian-kernel` (installed automatically as a dependency).
+Users do not need to activate or manage a virtual environment when Custodian
+is installed through its managed installer.
 
-If the integration itself is broken, the operator — not the model — can run
-`custodian-codex disable`. This removes the Codex plugin while deliberately
-preserving receipts and approvals for diagnosis; `custodian-codex setup`
-restores it. Start a new Codex thread after either change.
+Run setup from any directory. The installed package carries the Codex plugin
+files it needs; a source checkout is not required.
 
-## Sixty-second proof
+## Gate behavior
+
+Custodian's gate mode is an operator preference, shared by supported harnesses.
+Inspect it with:
 
 ```bash
-python scripts/codex-guard-demo.py
-pytest -q tests/
+custodian gates status
 ```
 
-The demo performs no network calls and changes no external state. It shows a
-safe test and workspace edit passing, `.env` access being denied, deliberately
-misclassified delete/deploy commands being independently upgraded to human
-escalation, a valid receipt chain, and rejection after receipt tampering.
-106 tests cover the full threat model.
+`open` permits matching policy rules to auto-pass all action classes.
+Notifications may be enabled to show those passes or disabled to avoid routine
+messages. `protect` requires approval for configured high-risk classes.
+Decisions continue to produce value-free evidence in the Custodian ledger.
 
-## Enforcement contract
+The guard evaluates routed tool calls before Codex's own approval decision.
+It supplements Codex's sandbox and permissions; it does not replace operating
+system isolation or govern tools that are not routed through the installed
+hook/MCP boundary.
 
-`guard_action` returns `autonomous`, `escalation_required`, `approved`, or
-`denied`. An escalation is never permission. The model can create a pending
-request but cannot approve it; the operator runs the returned
-`custodian-codex approve ID --digest DIGEST` outside the model tool boundary.
-Approval binds the exact tool, effective risk class, arguments, resolved
-workspace, requester, and policy version — any change requires a fresh
-request, never a reused approval ID.
+## Remove
 
-No harness — including Codex itself — can read the receipt ledger by
-default, not even its own history. Visibility is only ever an explicit
-operator grant. The agent being governed is exactly the party a denial log
-exists to constrain; letting it read its own denial history would turn the
-ledger into an oracle it could probe to learn the enforcement boundary and
-route around it.
+```bash
+python -m pip uninstall custodian-codex-guard
+```
 
-## What's in this repo vs. the kernel
+Uninstalling the package does not delete `~/.custodian`, receipts, approvals,
+gate preferences, policies, or vault data. To remove the Codex hook first:
 
-- **Here:** `custodian/codex_guard/` (MCP server, risk classification,
-  receipts, approvals, CLI), `plugins/custodian-codex-guard/` (Codex plugin
-  manifest + governance skill), tests, judge demo script.
-- **In `custodian-kernel`:** the adapter pipeline (workspace/secret/prompt-
-  injection/egress guards), `ApprovalPolicy`, `FilesystemPolicy`,
-  `LedgerAccessPolicy` — the policy engine every action is actually checked
-  against.
+```bash
+custodian-codex hook-uninstall
+```
 
-See [`docs/CODEX_GUARD.md`](docs/CODEX_GUARD.md) for the full judge guide.
+## Security
+
+Report vulnerabilities privately using the instructions in
+[SECURITY.md](SECURITY.md). Do not include credentials, vault contents, or
+private receipts in a public issue.
+
+- Documentation: https://getcustodian.xyz/docs
+- Source: https://github.com/KeyArgo/custodian-codex-guard
+- Package: https://pypi.org/project/custodian-codex-guard/

@@ -1,64 +1,50 @@
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "custodian-codex-guard"
-version = "0.1.1"
-description = "Custodian Guard for OpenAI Codex — typed action risk classification, fail-closed enforcement, and hash-chained receipts for Codex tool calls."
+version = "0.1.2"
+description = "Policy guard for Codex CLI: evaluate coding-agent actions before execution"
 requires-python = ">=3.11"
 readme = "README.md"
 license = "MIT"
-authors = [
-    {name = "InovinLabs", email = "hello@inovinlabs.com"},
-]
-keywords = ["ai", "agent", "codex", "openai", "security", "guardrails", "mcp"]
+license-files = ["LICENSE"]
+authors = [{name = "InovinLabs", email = "hello@inovinlabs.com"}]
+keywords = ["codex", "guard", "policy", "agent", "enforcement"]
 dependencies = [
     "custodian-kernel>=0.4.0,<0.5",
+    "cryptography>=42.0",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
     "Topic :: Software Development :: Libraries",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 [project.urls]
 Homepage = "https://getcustodian.xyz"
 Repository = "https://github.com/KeyArgo/custodian-codex-guard"
-"Custodian kernel" = "https://github.com/KeyArgo/custodian-kernel"
-
-[project.optional-dependencies]
-# Codex Guard itself never imports paladin (see custodian-kernel's own
-# architecture-boundary test -- the kernel and its adapters stay
-# brand-neutral; paladin:// is only ever regex-detected, never resolved
-# here). This extra exists purely to pass the choice through: install with
-# `pip install -e ".[paladin]"` if you also want the credential vault/egress
-# broker custodian-kernel itself ships as an optional extra.
-paladin = [
-    "custodian-kernel[paladin]>=0.4.0,<0.5",
-]
-dev = [
-    "pytest",
-]
+Documentation = "https://getcustodian.xyz/docs"
+Issues = "https://github.com/KeyArgo/custodian-codex-guard/issues"
+Security = "https://github.com/KeyArgo/custodian-codex-guard/blob/main/SECURITY.md"
 
 [project.scripts]
-custodian-codex-guard-mcp = "custodian.codex_guard.mcp_server:main"
 custodian-codex = "custodian.codex_guard.cli:main"
+custodian-codex-guard-mcp = "custodian.codex_guard.mcp_server:main"
+custodian-codex-guard-hook = "custodian.codex_guard.hook:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["custodian.codex_guard*"]
+include = ["custodian.codex_guard", "custodian.codex_guard.*"]
 namespaces = true
 
 [tool.setuptools.package-data]
-# Explicit paths, not a "bundled_plugin/**/*" glob -- Python's glob (which
-# setuptools package-data uses) never matches dotfiles/dot-directories with
-# `*`, even inside `**`, so a glob here silently drops exactly the files
-# that matter: .agents/plugins/marketplace.json, .mcp.json, .codex-plugin/
-# plugin.json. Confirmed by inspecting a built wheel -- the glob version
-# included the two .md files and silently dropped all three dotfile paths.
 "custodian.codex_guard" = [
     "*.md",
     "bundled_plugin/.agents/plugins/marketplace.json",

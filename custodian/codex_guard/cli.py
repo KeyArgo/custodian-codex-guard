@@ -13,6 +13,8 @@ import shutil
 from .approvals import ApprovalError, ApprovalStore
 from .mcp_server import _state_dir
 from .receipts import ReceiptChain
+from . import hook_install
+from . import paladin_bridge
 
 PLUGIN_ID = "custodian-codex-guard@custodian-build-week"
 
@@ -22,22 +24,38 @@ def _command_available(name: str) -> bool:
 
 
 def _repo_root() -> Path | None:
-    """Find the directory containing `.agents/plugins/marketplace.json`.
-
-    A git checkout has this at the repo root. A plain `pip install` has no
-    checkout at all -- the marketplace file and the plugin it points at
-    (`plugins/custodian-codex-guard/`) ship as package data instead, under
-    `bundled_plugin/`, mirroring the same relative layout so the
-    marketplace.json's `./plugins/custodian-codex-guard` source path
-    resolves unchanged either way."""
     candidates = [Path.cwd(), *Path(__file__).resolve().parents]
     for candidate in candidates:
         if (candidate / ".agents" / "plugins" / "marketplace.json").is_file():
             return candidate
+    # Wheels carry a self-contained marketplace beside this module.  Setup
+    # must work from any directory after ``pip install``, not only while the
+    # current directory happens to be the private source checkout.
     bundled = Path(__file__).resolve().parent / "bundled_plugin"
     if (bundled / ".agents" / "plugins" / "marketplace.json").is_file():
         return bundled
     return None
+
+
+def _plugin_runtime_root() -> Path:
+    """Return the operator-writable copy used by the Codex plugin manager."""
+    return hook_install.codex_config_path().parent / "custodian-codex-guard-plugin"
+
+
+def _materialize_plugin_runtime(source: Path) -> Path:
+    """Copy the packaged marketplace into Codex's user configuration area.
+
+    Package directories may be root-owned or otherwise read-only.  Setup must
+    never rewrite installed wheel contents merely to pin the live interpreter.
+    """
+    destination = _plugin_runtime_root()
+    destination.mkdir(parents=True, exist_ok=True)
+    for name in (".agents", "plugins"):
+        source_dir = source / name
+        if not source_dir.is_dir():
+            raise FileNotFoundError(f"plugin bundle is incomplete: {source_dir}")
+        shutil.copytree(source_dir, destination / name, dirs_exist_ok=True)
+    return destination
 
 
 def _mcp_command() -> list[str]:
@@ -136,11 +154,16 @@ def _ensure_mcp_json(mcp_json_path: Path) -> bool:
 
 
 def cmd_setup(args: argparse.Namespace) -> int:
-    root = _repo_root()
-    if root is None:
-        print("plugin marketplace not found; run setup from the Custodian checkout", file=sys.stderr)
+    source_root = _repo_root()
+    if source_root is None:
+        print(
+            "plugin marketplace is missing from the installed package; "
+            "reinstall custodian-codex-guard",
+            file=sys.stderr,
+        )
         return 1
 
+    root = source_root
     commands = [
         ["codex", "plugin", "marketplace", "add", str(root)],
         ["codex", "plugin", "add", PLUGIN_ID],
@@ -150,8 +173,23 @@ def cmd_setup(args: argparse.Namespace) -> int:
         print("would run: " + " ".join(_mcp_command()))
         for command in commands:
             print("would run: " + " ".join(command))
+        print(f"would install PreToolUse enforcement hook into: {hook_install.codex_config_path()}")
+        print(f"  command: {hook_install.hook_command()}")
         return 0
 
+    try:
+        root = _materialize_plugin_runtime(source_root)
+    except OSError as exc:
+        print(
+            f"plugin staging failed: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+    commands = [
+        ["codex", "plugin", "marketplace", "add", str(root)],
+        ["codex", "plugin", "add", PLUGIN_ID],
+        ["codex", "mcp", "add", "custodian-codex-guard", "--", *_mcp_command()],
+    ]
     plugin_mcp = root / "plugins" / "custodian-codex-guard" / ".mcp.json"
     if not _ensure_mcp_json(plugin_mcp):
         print("MCP server registration failed — guard is not reachable", file=sys.stderr)
@@ -176,8 +214,86 @@ def cmd_setup(args: argparse.Namespace) -> int:
             print(f"setup failed: {detail}", file=sys.stderr)
             return 1
     print(f"installed and enabled: {PLUGIN_ID}")
+    # The hook -- not the plugin/MCP tool -- is what makes the guard mandatory:
+    # Codex enforces it on every tool call before its own approval decision, so
+    # it holds even under approval_policy=never or a trusted project -- but only
+    # once the hook is TRUSTED or MANAGED. A plain user-level install (the
+    # default here, no --managed-lock) starts Untrusted and is silently SKIPPED
+    # in non-interactive `codex exec` until approved once in the TUI (see
+    # docs/ROADMAP-codex-kernel-enforcement.md's live smoke-test finding). The
+    # print statements below already say this; don't let this comment drift
+    # back to the unqualified claim. The MCP server above stays for
+    # receipt/approval visibility either way.
+    try:
+        path = hook_install.install(matcher=args.matcher)
+        print(f"installed PreToolUse enforcement hook: {path}")
+    except hook_install.HookInstallError as exc:
+        print(f"WARNING: could not install enforcement hook ({exc}); "
+              "the guard is NOT mandatory until this is fixed", file=sys.stderr)
+        return 1
+
+    if getattr(args, "managed_lock", False):
+        # Always-on, unstrippable enforcement: a managed hook is auto-trusted and
+        # runs in non-interactive exec with no TUI trust prompt. Needs write
+        # access to the managed dir (root-owned /etc/codex by default).
+        try:
+            cfg, req = hook_install.install_managed(matcher=args.matcher)
+            print(f"installed MANAGED (always-on) hook: {cfg}")
+            if req:
+                print(f"locked config to managed hooks only: {req}")
+        except (PermissionError, OSError) as exc:
+            print(f"WARNING: managed install needs write access to "
+                  f"{hook_install.managed_dir()} ({type(exc).__name__}); "
+                  f"{hook_install.elevation_hint()}, or set CUSTODIAN_CODEX_MANAGED_DIR",
+                  file=sys.stderr)
+            return 1
+    else:
+        # A user-level hook starts UNTRUSTED and is skipped in exec until trusted.
+        print("IMPORTANT: run `codex` once interactively and approve the hook "
+              "trust prompt, or the hook is skipped in non-interactive runs.")
+        print("For always-on, unstrippable enforcement instead: "
+              "sudo custodian-codex setup --managed-lock")
+
+    # Phase 2 -- surface the Paladin credential path so the operator knows how
+    # Codex resolves secrets it doesn't hold. This never blocks setup: Paladin
+    # is optional and every branch is advisory.
+    if paladin_bridge.vault_configured():
+        helpers = paladin_bridge.git_helpers()
+        if helpers:
+            wired = ", ".join(f"{host} -> paladin://{ref}" for host, ref in helpers)
+            print(f"Paladin: vault configured; git credentials wired for {wired}")
+        else:
+            print("Paladin: vault configured but no git host is wired yet. "
+                  "Wire one so Codex git ops resolve tokens from the vault:")
+            print("  custodian-codex paladin-git <host> <ref>   "
+                  "(e.g. github.com github_token)")
+    elif paladin_bridge.paladin_available():
+        print("Paladin: installed but no vault yet. `paladin init` then "
+              "`custodian-codex paladin-git <host> <ref>` to keep secrets out "
+              "of Codex's context.")
     print("start a new Codex thread to load the guard")
     return 0
+
+
+def cmd_paladin_git(args: argparse.Namespace) -> int:
+    """Wire git -> Paladin for one host/ref so Codex git ops pull tokens from
+    the encrypted vault at request time -- never from config, a URL, or argv.
+
+    This is the transparent half of "Codex checks Paladin first for a password
+    it doesn't hold": once wired, `git push`/`git fetch` to <host> just work,
+    with the token resolved from the vault and never entering Codex's context.
+    """
+    if not paladin_bridge.paladin_available():
+        print("the `paladin` CLI is not on PATH; install Paladin first",
+              file=sys.stderr)
+        return 1
+    if not paladin_bridge.vault_configured():
+        print(f"no Paladin vault at {paladin_bridge.vault_path()}; run "
+              "`paladin init` and `paladin add <ref>` first", file=sys.stderr)
+        return 1
+    ok, message = paladin_bridge.wire_git_helper(args.host, args.ref)
+    print(message, file=sys.stdout if ok else sys.stderr)
+    return 0 if ok else 1
 
 
 def cmd_disable(_: argparse.Namespace) -> int:
@@ -361,7 +477,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             results.append(("mcp.json", False, "parse error"))
 
     # Plugin .mcp.json interpreter freshness
-    root = _repo_root()
+    configured_root = _plugin_runtime_root()
+    root = configured_root if (
+        configured_root / ".agents/plugins/marketplace.json"
+    ).is_file() else _repo_root()
     if root is not None:
         plugin_mcp = root / "plugins" / "custodian-codex-guard" / ".mcp.json"
         if plugin_mcp.exists():
@@ -383,6 +502,33 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 except (json.JSONDecodeError, OSError):
                     results.append(("plugin .mcp.json", False, "parse error"))
 
+    # PreToolUse enforcement hook -- the mandatory-enforcement check. Without
+    # it the guard is only advisory (the model must choose to call the MCP tool).
+    managed = hook_install.managed_status()
+    hook_state = hook_install.status()
+    if managed["installed"]:
+        # Managed hooks are always-on and auto-trusted -- the strongest state.
+        lock = "locked to managed-only" if managed["locked"] else "not locked"
+        results.append(("enforcement hook", True, f"MANAGED always-on ({lock}): {managed['path']}"))
+    elif not hook_state["installed"]:
+        results.append(("enforcement hook", False,
+                        f"NOT installed in {hook_state['path']} -- guard is advisory only; run setup"))
+    elif not hook_state["interpreter_current"]:
+        results.append(("enforcement hook", False,
+                        f"stale interpreter ({hook_state['command']}); rerun setup"))
+    else:
+        # Installed user-level. Codex silently SKIPS an untrusted hook in
+        # non-interactive `exec`, and its trust state is a content hash in
+        # Codex's state db that we cannot read here -- so we can NOT confirm
+        # this hook actually enforces. Report WARN, never OK: a soft "OK" here
+        # would let an operator (or a judge) believe they are protected when
+        # enforcement may be silently inert. Only MANAGED is verifiably on.
+        results.append(("enforcement hook", "warn",
+                        f"{hook_state['path']} -- INSTALLED BUT NOT VERIFIABLE. "
+                        "Codex skips untrusted hooks in `codex exec`; approve the "
+                        "one-time TUI trust prompt, or use --managed-lock for "
+                        "verifiable always-on enforcement."))
+
     # Approval store
     state = _state_dir()
     try:
@@ -400,16 +546,64 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     except Exception as exc:
         results.append(("receipt chain", False, str(exc)))
 
+    # Paladin credential path (Phase 2). Optional dependency: its absence is a
+    # WARN, never a FAIL -- codex-guard is fully functional without it, but a
+    # configured Paladin is how Codex resolves a secret it doesn't hold without
+    # prompting for or inlining a raw value. All checks are value-free (no unlock).
+    pal = paladin_bridge.status_summary()
+    if not pal["available"]:
+        results.append(("paladin", "warn",
+                        "not installed -- credential actions escalate to a human; "
+                        "install custodian-paladin to resolve secrets from a vault"))
+    elif not pal["vault_configured"]:
+        results.append(("paladin", "warn",
+                        f"installed but no vault at {pal['vault_path']} -- run "
+                        "`paladin init`, then `custodian-codex paladin-git <host> <ref>`"))
+    elif not pal["git_helpers"]:
+        results.append(("paladin", "warn",
+                        "vault configured but no git host wired -- run "
+                        "`custodian-codex paladin-git <host> <ref>` so Codex git "
+                        "ops resolve tokens from the vault"))
+    else:
+        wired = ", ".join(f"{host}->paladin://{ref}" for host, ref in pal["git_helpers"])
+        results.append(("paladin", True, f"vault configured; git wired for {wired}"))
+
+    # Three states: True -> OK, "warn" -> WARN (installed but unverifiable),
+    # False -> FAIL. WARN must never read as OK (see the enforcement-hook check).
     for name, passed, detail in results:
-        tag = "OK" if passed else "FAIL"
+        tag = "WARN" if passed == "warn" else ("OK" if passed else "FAIL")
         print(f"  {tag}  {name:<20} {detail}")
 
-    all_ok = all(ok for _, ok, _ in results)
-    if all_ok:
-        print("\nAll checks passed. Consequential actions fail closed unless approved.")
-    else:
+    has_fail = any(p is False for _, p, _ in results)
+    enforcement_warn = any(
+        name == "enforcement hook" and p == "warn" for name, p, _ in results
+    )
+    paladin_warn = any(name == "paladin" and p == "warn" for name, p, _ in results)
+    has_warn = any(p == "warn" for _, p, _ in results)
+    if has_fail:
         print("\nSome checks failed — see above.", file=sys.stderr)
-    return 0 if all_ok else 1
+    elif enforcement_warn:
+        # Not a clean pass: do NOT tell the operator they are protected.
+        print("\n⚠ Enforcement is installed but NOT verifiably active. Codex "
+              "silently skips an untrusted hook in `codex exec`. Confirm the "
+              "one-time Codex trust prompt was approved, or run "
+              "`custodian-codex setup --managed-lock` for verifiable, always-on "
+              "enforcement. Do not assume you are protected until then.",
+              file=sys.stderr)
+    elif paladin_warn:
+        # Enforcement is fine; only the credential path is not fully wired.
+        # Guard still works -- credential actions just escalate to a human
+        # instead of resolving from a vault.
+        print("\n⚠ Enforcement is active, but the Paladin credential path is not "
+              "fully wired (see above). Codex will escalate credential actions to "
+              "a human rather than resolving them from a vault. Wire it with "
+              "`custodian-codex paladin-git <host> <ref>` for hands-off, "
+              "leak-proof secret delivery.", file=sys.stderr)
+    else:
+        print("\nAll checks passed. Consequential actions fail closed unless approved.")
+    # WARN keeps exit 0 (the install is not broken), but the banner above makes
+    # the unverified state unmissable. A FAIL (missing/stale hook) exits 1.
+    return 1 if has_fail else 0
 
 
 def cmd_deny(args: argparse.Namespace) -> int:
@@ -449,14 +643,63 @@ def cmd_deny(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_hook_uninstall(args: argparse.Namespace) -> int:
+    """Operator escape hatch: turn the guard off if it is misbehaving.
+
+    Without --managed, removes the user-level hook. With --managed, removes the
+    always-on managed hook and the managed-only lock (needs root/admin write to
+    the managed dir) so Codex runs normally again.
+    """
+    if getattr(args, "managed", False):
+        try:
+            removed = hook_install.uninstall_managed()
+        except hook_install.HookInstallError as exc:
+            print(f"hook-uninstall --managed failed: {exc}", file=sys.stderr)
+            return 1
+        except (PermissionError, OSError) as exc:
+            print(f"hook-uninstall --managed needs write access to "
+                  f"{hook_install.managed_dir()} ({type(exc).__name__}); "
+                  f"{hook_install.elevation_hint()}", file=sys.stderr)
+            return 1
+        print(f"removed managed enforcement hook + lock from {hook_install.managed_dir()}"
+              if removed else f"no managed Custodian hook present in {hook_install.managed_dir()}")
+        return 0
+    try:
+        removed = hook_install.uninstall()
+    except hook_install.HookInstallError as exc:
+        print(f"hook-uninstall failed: {exc}", file=sys.stderr)
+        return 1
+    path = hook_install.codex_config_path()
+    print(f"removed enforcement hook from {path}" if removed
+          else f"no Custodian enforcement hook present in {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="custodian-codex")
     sub = parser.add_subparsers(dest="command", required=True)
-    setup = sub.add_parser("setup", help="install and enable the Codex plugin")
+    setup = sub.add_parser("setup", help="install the plugin, MCP server, and enforcement hook")
     setup.add_argument("--dry-run", action="store_true")
+    setup.add_argument("--matcher", default=hook_install.DEFAULT_MATCHER,
+                       help="tool-name regex the hook governs (default '.*' = all tools)")
+    setup.add_argument("--managed-lock", action="store_true",
+                       help="also install an always-on managed hook and lock config "
+                            "to managed hooks only (needs root/managed-dir write)")
     setup.set_defaults(fn=cmd_setup)
+    hook_uninstall = sub.add_parser("hook-uninstall",
+                                    help="operator escape hatch: remove the enforcement hook")
+    hook_uninstall.add_argument("--managed", action="store_true",
+                                help="remove the always-on MANAGED hook + lock "
+                                     "(needs root/admin write to the managed dir)")
+    hook_uninstall.set_defaults(fn=cmd_hook_uninstall)
     disable = sub.add_parser("disable", help="operator escape hatch; preserve evidence")
     disable.set_defaults(fn=cmd_disable)
+    paladin_git = sub.add_parser(
+        "paladin-git",
+        help="wire git -> Paladin for one host so Codex resolves tokens from the vault")
+    paladin_git.add_argument("host", help="git host, e.g. github.com")
+    paladin_git.add_argument("ref", help="vault ref name to resolve for that host")
+    paladin_git.set_defaults(fn=cmd_paladin_git)
     approve = sub.add_parser("approve", help="approve one exact pending action")
     approve.add_argument("approval_id", help="approval UUID, or 'latest'")
     approve.add_argument(
