@@ -1,6 +1,6 @@
 [project]
 name = "custodian-codex-guard"
-version = "0.1.2"
+version = "0.1.3"
 description = "Policy guard for Codex CLI: evaluate coding-agent actions before execution"
 requires-python = ">=3.11"
 readme = "README.md"
@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [{name = "InovinLabs", email = "hello@inovinlabs.com"}]
 keywords = ["codex", "guard", "policy", "agent", "enforcement"]
 dependencies = [
-    "custodian-kernel>=0.4.0,<0.5",
+    "custodian-kernel>=0.4.2,<0.5",
     "cryptography>=42.0",
 ]
 classifiers = [
@@ -53,3 +53,6 @@ namespaces = true
     "bundled_plugin/plugins/custodian-codex-guard/README.md",
     "bundled_plugin/plugins/custodian-codex-guard/skills/govern-codex/SKILL.md",
 ]
+
+[tool.setuptools.data-files]
+"share/man/man1" = ["docs/man/custodian-codex.1"]

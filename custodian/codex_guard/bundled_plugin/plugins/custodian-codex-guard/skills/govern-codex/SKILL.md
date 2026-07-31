@@ -11,9 +11,12 @@ and that can block it outright. This holds even under `approval_policy = "never"
 or a trusted project, and does not depend on you calling any tool. A blocked call
 returns `permissionDecision: "deny"` with the reason; a consequential action you
 have not had approved is blocked with a `custodian-codex approve ID --digest
-DIGEST` instruction — ask the operator to run it, then retry the **identical**
-action once. You cannot split a forbidden operation into smaller calls to evade
-the hook; each call is evaluated independently.
+DIGEST` instruction. Ask the operator to run it, then call the
+`wait_for_approval` MCP tool with the returned approval ID, action digest, and
+the same stable requester ID. Keep that tool call running so Codex resumes
+automatically when the operator approves; then retry the **identical** action
+once. You cannot split a forbidden operation into smaller calls to evade the
+hook; each call is evaluated independently.
 
 The `guard_action` MCP tool below remains available for previewing a decision or
 for surfacing receipts, but it is no longer what enforces policy. Use it to
@@ -36,8 +39,11 @@ the call; use a `paladin://` reference. Treat the verdict mechanically:
 - `autonomous`: proceed with the exact evaluated action.
 - `escalation_required`: stop, show the returned approval ID, and ask the human
   to run the exact `custodian-codex approve ID --digest DIGEST` command returned
-  by Guard. Call `guard_action` again with that same ID and the exact same
-  action. The verdict itself is not approval.
+  by Guard. Immediately call `wait_for_approval` with that approval ID, action
+  digest, and requester, and remain waiting. On `approved`, call `guard_action`
+  again with that same ID and the exact same action. On `timeout`, call
+  `wait_for_approval` again with the same values. On `denied` or `expired`, stop.
+  An escalation verdict or a pending/timeout wait result is not approval.
 - `approved`: proceed once with the exact evaluated action. Any argument change
   requires a new request; never reuse an approval ID.
 - `denied`: do not execute. Explain the denial without exposing sensitive data.

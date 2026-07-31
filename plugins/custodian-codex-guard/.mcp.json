@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "custodian-codex-guard": {
-      "command": "custodian-codex-guard-mcp",
-      "args": []
-    }
-  }
-}

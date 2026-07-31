@@ -1,0 +1,115 @@
+.TH "CUSTODIAN-CODEX" "1" "" "Custodian" "User Commands"
+.SH NAME
+custodian-codex \- Install and operate Custodian Codex Guard: fail\-closed tool\-call enforcement, action\-bound approvals, and authenticated receipts.
+.SH SYNOPSIS
+.B custodian-codex
+[OPTIONS] COMMAND [ARGS]
+.SH DESCRIPTION
+Install and operate Custodian Codex Guard: fail\-closed tool\-call enforcement, action\-bound approvals, and authenticated receipts.
+.SH COMMAND REFERENCE
+.SS custodian\-codex
+.nf
+usage: custodian\-codex [\-h]
+                       {setup,hook\-uninstall,disable,paladin\-git,approve,deny,status,doctor} ...
+
+Install and operate Custodian Codex Guard: fail\-closed tool\-call enforcement, action\-bound approvals, and authenticated receipts.
+
+positional arguments:
+  {setup,hook\-uninstall,disable,paladin\-git,approve,deny,status,doctor}
+    setup               install the plugin, MCP server, and enforcement hook
+    hook\-uninstall      operator escape hatch: remove the enforcement hook
+    disable             operator escape hatch; preserve evidence
+    paladin\-git         wire git \-> Paladin for one host so Codex resolves tokens from the vault
+    approve             approve one exact pending action
+    deny                headless denial of a pending approval
+    status              verify receipts and show approval counts
+    doctor              check the local Codex Guard installation
+
+options:
+  \-h, \-\-help            show this help message and exit
+
+examples:
+  custodian\-codex setup
+  custodian\-codex doctor
+  custodian\-codex approve latest
+  custodian\-codex status
+
+Run `custodian\-codex COMMAND \-\-help` for command\-specific options.
+.fi
+.SS custodian\-codex setup
+.nf
+usage: custodian\-codex setup [\-h] [\-\-dry\-run] [\-\-matcher MATCHER] [\-\-managed\-lock]
+
+options:
+  \-h, \-\-help         show this help message and exit
+  \-\-dry\-run          show the installation actions without changing the system
+  \-\-matcher MATCHER  tool\-name regex the hook governs (default '.*' = all tools)
+  \-\-managed\-lock     also install an always\-on managed hook and lock config to managed hooks only
+                     (needs root/managed\-dir write)
+.fi
+.SS custodian\-codex hook\-uninstall
+.nf
+usage: custodian\-codex hook\-uninstall [\-h] [\-\-managed]
+
+options:
+  \-h, \-\-help  show this help message and exit
+  \-\-managed   remove the always\-on MANAGED hook + lock (needs root/admin write to the managed dir)
+.fi
+.SS custodian\-codex disable
+.nf
+usage: custodian\-codex disable [\-h]
+
+options:
+  \-h, \-\-help  show this help message and exit
+.fi
+.SS custodian\-codex paladin\-git
+.nf
+usage: custodian\-codex paladin\-git [\-h] host ref
+
+positional arguments:
+  host        git host, e.g. github.com
+  ref         vault ref name to resolve for that host
+
+options:
+  \-h, \-\-help  show this help message and exit
+.fi
+.SS custodian\-codex approve
+.nf
+usage: custodian\-codex approve [\-h] [\-\-digest DIGEST] [\-\-operator OPERATOR] approval_id
+
+positional arguments:
+  approval_id          approval UUID, or 'latest'
+
+options:
+  \-h, \-\-help           show this help message and exit
+  \-\-digest DIGEST      optional full digest copied from Guard for independent verification
+  \-\-operator OPERATOR  operator identity (defaults to USER or USERNAME)
+.fi
+.SS custodian\-codex deny
+.nf
+usage: custodian\-codex deny [\-h] [\-\-operator OPERATOR] approval_id
+
+positional arguments:
+  approval_id          approval UUID, or 'latest'
+
+options:
+  \-h, \-\-help           show this help message and exit
+  \-\-operator OPERATOR  operator identity (falls back to $USER)
+.fi
+.SS custodian\-codex status
+.nf
+usage: custodian\-codex status [\-h]
+
+options:
+  \-h, \-\-help  show this help message and exit
+.fi
+.SS custodian\-codex doctor
+.nf
+usage: custodian\-codex doctor [\-h]
+
+options:
+  \-h, \-\-help  show this help message and exit
+.fi
+.SH SEE ALSO
+.BR custodian (1),
+.BR custodian-codex (1)

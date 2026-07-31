@@ -6,6 +6,11 @@ commands, production changes, money movement, and governance changes stop at a
 human-approval boundary. Every decision produces a value-free HMAC hash-chained
 receipt.
 
+Codex Guard and
+[Hermes Guard](https://github.com/KeyArgo/custodian-hermes-guard) are sibling
+adapters over the same Custodian kernel policy and approval contract. Their
+differences are limited to enforcement points exposed by each harness.
+
 Watch the demo: [Custodian Codex Guard: A Safety Layer for AI Coding
 Agents](https://youtu.be/lnIwDIbzZf0).
 

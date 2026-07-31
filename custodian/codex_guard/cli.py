@@ -373,13 +373,20 @@ def cmd_status(_: argparse.Namespace) -> int:
     store = ApprovalStore(state)
     approval_dir = store.approvals_dir
     counts: dict[str, int] = {}
+    now = time.time()
     for path in approval_dir.glob("*.json") if approval_dir.exists() else ():
         try:
-            status = store.get(path.stem).status
+            record = store.get(path.stem)
+            status = (
+                "expired"
+                if record.status in {"pending", "approved"} and record.expires_at <= now
+                else record.status
+            )
         except (OSError, ApprovalError):
             status = "invalid"
         counts[status] = counts.get(status, 0) + 1
     print(f"state: {state}")
+    print(f"actionable approvals: {counts.get('pending', 0)}")
     print("approvals: " + (", ".join(f"{k}={v}" for k, v in sorted(counts.items())) or "none"))
     try:
         print(f"receipts: valid ({ReceiptChain(state).verify()})")
@@ -676,10 +683,28 @@ def cmd_hook_uninstall(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="custodian-codex")
+    parser = argparse.ArgumentParser(
+        prog="custodian-codex",
+        description=(
+            "Install and operate Custodian Codex Guard: fail-closed tool-call "
+            "enforcement, action-bound approvals, and authenticated receipts."
+        ),
+        epilog=(
+            "examples:\n"
+            "  custodian-codex setup\n"
+            "  custodian-codex doctor\n"
+            "  custodian-codex approve latest\n"
+            "  custodian-codex status\n\n"
+            "Run `custodian-codex COMMAND --help` for command-specific options."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     setup = sub.add_parser("setup", help="install the plugin, MCP server, and enforcement hook")
-    setup.add_argument("--dry-run", action="store_true")
+    setup.add_argument(
+        "--dry-run", action="store_true",
+        help="show the installation actions without changing the system",
+    )
     setup.add_argument("--matcher", default=hook_install.DEFAULT_MATCHER,
                        help="tool-name regex the hook governs (default '.*' = all tools)")
     setup.add_argument("--managed-lock", action="store_true",
@@ -706,7 +731,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--digest",
         help="optional full digest copied from Guard for independent verification",
     )
-    approve.add_argument("--operator")
+    approve.add_argument(
+        "--operator",
+        help="operator identity (defaults to USER or USERNAME)",
+    )
     approve.set_defaults(fn=cmd_approve)
     deny = sub.add_parser("deny", help="headless denial of a pending approval")
     deny.add_argument("approval_id", help="approval UUID, or 'latest'")

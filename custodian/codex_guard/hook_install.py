@@ -240,9 +240,25 @@ def status(config_path: Path | None = None, *, python: str | None = None) -> dic
         return result
     result["installed"] = True
     expected = hook_command(python)
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("command =") and HOOK_MARKER in stripped:
-            result["command"] = stripped.split("=", 1)[1].strip().strip('"')
-            result["interpreter_current"] = (result["command"] == expected)
+    try:
+        parsed = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return result
+
+    def _commands(value):
+        if isinstance(value, dict):
+            command = value.get("command")
+            if isinstance(command, str):
+                yield command
+            for nested in value.values():
+                yield from _commands(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                yield from _commands(nested)
+
+    for command in _commands(parsed.get("hooks", {})):
+        if HOOK_MARKER in command:
+            result["command"] = command
+            result["interpreter_current"] = command == expected
+            break
     return result
