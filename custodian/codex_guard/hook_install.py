@@ -149,10 +149,25 @@ def managed_status() -> dict:
 
 
 def hook_command(python: str | None = None) -> str:
+    """Human-readable, single-string form of the hook invocation -- used for
+    display and as a comparison signature in status(). NOT used to build the
+    actual TOML block written to config.toml -- see _block()'s docstring."""
     return f"{python or sys.executable} -m {HOOK_MODULE}"
 
 
 def _block(matcher: str, python: str | None = None) -> str:
+    """``command`` is the bare interpreter path; ``args`` is a real TOML
+    array. Verified directly against the installed codex-cli 0.146.0 binary
+    (its ``HookHandlerConfig::Command`` variant has distinct ``command``,
+    ``args``, and even a Windows-specific ``commandWindows`` override field
+    -- Codex's own schema anticipated this exact problem). Joining
+    interpreter+module into one ``command`` string was equivalent to Claude
+    Code's shell-form bug: ``sys.executable`` commonly contains a space on
+    Windows (the default all-users install path is literally
+    ``C:\\Program Files\\...``), and depending on how the host shell
+    tokenizes an unquoted TOML string value, that silently breaks the hook
+    before it ever launches. Splitting into a real array removes any
+    ambiguity about how the value is tokenized."""
     return "\n".join([
         BEGIN,
         "[[hooks.PreToolUse]]",
@@ -160,7 +175,8 @@ def _block(matcher: str, python: str | None = None) -> str:
         "",
         "[[hooks.PreToolUse.hooks]]",
         'type = "command"',
-        f"command = {_toml_str(hook_command(python))}",
+        f"command = {_toml_str(python or sys.executable)}",
+        f"args = {_toml_str_array(['-m', HOOK_MODULE])}",
         "timeout = 30",
         END,
     ])
@@ -170,6 +186,10 @@ def _toml_str(value: str) -> str:
     # Basic TOML string: escape backslash and double-quote. Interpreter/matcher
     # never contain control chars, so this is sufficient and keeps output stable.
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _toml_str_array(values: list[str]) -> str:
+    return "[" + ", ".join(_toml_str(v) for v in values) + "]"
 
 
 def _strip_our_block(text: str) -> str:
@@ -229,10 +249,18 @@ def uninstall(config_path: Path | None = None) -> bool:
 
 
 def status(config_path: Path | None = None, *, python: str | None = None) -> dict:
-    """Return {'installed', 'interpreter_current', 'command', 'path'}."""
+    """Return {'installed', 'interpreter_current', 'command', 'path', 'error'}.
+
+    ``installed`` is a raw substring check for our marker text -- it survives
+    a config file that has since become unparseable TOML, so a corruption
+    elsewhere in the file never reports as "not installed" (a silent lie an
+    operator could read as "safe, nothing to worry about"). ``error`` is set
+    only when the TOML itself failed to parse; ``interpreter_current``/
+    ``command`` are unavailable in that case since they need the parsed
+    structure."""
     path = config_path or codex_config_path()
     result = {"installed": False, "interpreter_current": False,
-              "command": None, "path": str(path)}
+              "command": None, "path": str(path), "error": None}
     if not path.exists():
         return result
     text = path.read_text(encoding="utf-8")
@@ -242,14 +270,24 @@ def status(config_path: Path | None = None, *, python: str | None = None) -> dic
     expected = hook_command(python)
     try:
         parsed = tomllib.loads(text)
-    except tomllib.TOMLDecodeError:
+    except tomllib.TOMLDecodeError as exc:
+        result["error"] = str(exc)
         return result
 
     def _commands(value):
+        # Yields the same joined "command args..." signature hook_command()
+        # produces, for both the current exec-form entry (command=bare
+        # interpreter, args=[-m, module] as a sibling TOML array) and a
+        # legacy shell-form entry from before this fix (command=full
+        # string, no args key at all).
         if isinstance(value, dict):
             command = value.get("command")
             if isinstance(command, str):
-                yield command
+                args = value.get("args")
+                if isinstance(args, list) and args:
+                    yield " ".join([command, *(str(a) for a in args)])
+                else:
+                    yield command
             for nested in value.values():
                 yield from _commands(nested)
         elif isinstance(value, list):

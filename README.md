@@ -31,8 +31,10 @@ replace operating-system isolation.
 
 ## Install
 
-Version 0.1.3 is available as a GitHub release. It depends on Custodian Kernel
-0.4.2.
+Version 0.1.4 is available as a GitHub release, not yet on PyPI. It adds
+open-gate crossing notifications, and the evaluation engine moved into
+Custodian Kernel so sibling guard adapters no longer depend on this package.
+It depends on Custodian Kernel 0.4.3.
 
 Install from PyPI:
 
@@ -112,9 +114,10 @@ python -m pip uninstall custodian-codex-guard
 
 ## Release status
 
-The 0.1.3 release has passed the full monorepo suite, clean-wheel smoke
-tests, strict artifact validation, and qualification on Linux and Windows.
-macOS qualification remains pending.
+The 0.1.4 release has passed the full monorepo suite, clean-wheel smoke
+tests, strict artifact validation, and qualification on Linux and Windows,
+on top of the evaluation-engine relocation described above. macOS
+qualification remains pending.
 
 Custodian is alpha software and has not received a third-party security audit.
 Read [SECURITY.md](SECURITY.md) before using it for consequential actions.

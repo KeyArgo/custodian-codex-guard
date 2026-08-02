@@ -11,7 +11,7 @@ from pathlib import Path
 import shutil
 
 from .approvals import ApprovalError, ApprovalStore
-from .mcp_server import _state_dir
+from .mcp_server import _state_dir, open_gate_summary
 from .receipts import ReceiptChain
 from . import hook_install
 from . import paladin_bridge
@@ -388,12 +388,35 @@ def cmd_status(_: argparse.Namespace) -> int:
     print(f"state: {state}")
     print(f"actionable approvals: {counts.get('pending', 0)}")
     print("approvals: " + (", ".join(f"{k}={v}" for k, v in sorted(counts.items())) or "none"))
+    chain = ReceiptChain(state)
     try:
-        print(f"receipts: valid ({ReceiptChain(state).verify()})")
-        return 0
+        print(f"receipts: valid ({chain.verify()})")
     except Exception as exc:
         print(f"receipts: INVALID ({exc})")
         return 1
+    _print_open_gate_summary(chain)
+    return 0
+
+
+def _print_open_gate_summary(chain: ReceiptChain) -> None:
+    """Codex's PreToolUse hook can only deny or emit nothing (verified
+    against the live codex-cli binary -- see
+    docs/ROADMAP-codex-kernel-enforcement.md) -- there is no live channel
+    to tell the operator inline "this action just walked through an open
+    gate" the way Claude Guard's systemMessage can. This is the pull-based
+    substitute: a summary the operator checks on demand, from the same
+    receipts `verify()` already reads. Shared with `custodian-claude status`
+    via `mcp_server.open_gate_summary` -- see its docstring for why the
+    harness filter matters.
+    """
+    counts = open_gate_summary(chain, harness="codex")
+    if not counts:
+        print("open-gate auto-allows: none")
+        return
+    total = sum(counts.values())
+    breakdown = ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+    print(f"open-gate auto-allows: {total} ({breakdown})")
+    print("  no human approved these -- run `custodian gates protect` to require it")
 
 
 def _diagnose_stale_registration(mcp_json_path: Path) -> tuple[bool, str]:
@@ -517,6 +540,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         # Managed hooks are always-on and auto-trusted -- the strongest state.
         lock = "locked to managed-only" if managed["locked"] else "not locked"
         results.append(("enforcement hook", True, f"MANAGED always-on ({lock}): {managed['path']}"))
+    elif hook_state.get("error"):
+        # A corrupted config still reports installed=True here (marker text
+        # survives a TOML parse failure) -- never conflate that with "never
+        # installed"; an operator seeing a plain "NOT installed" on a file
+        # that used to work would reasonably assume nothing needs fixing.
+        marker_note = " (marker text found, unverified)" if hook_state["installed"] else ""
+        results.append(("enforcement hook", False,
+                        f"{hook_state['path']} is unreadable/invalid "
+                        f"({hook_state['error']}){marker_note}; fix or remove it, then rerun setup"))
     elif not hook_state["installed"]:
         results.append(("enforcement hook", False,
                         f"NOT installed in {hook_state['path']} -- guard is advisory only; run setup"))
