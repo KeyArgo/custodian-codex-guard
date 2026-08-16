@@ -1,3 +1,28 @@
+Metadata-Version: 2.4
+Name: custodian-codex-guard
+Version: 0.2.0
+Summary: Policy guard for Codex CLI: evaluate coding-agent actions before execution (thin adapter on custodian-kernel)
+Author: InovinLabs
+License-Expression: Apache-2.0
+Project-URL: Homepage, https://getcustodian.xyz
+Project-URL: Repository, https://github.com/KeyArgo/custodian-codex-guard
+Project-URL: Documentation, https://getcustodian.xyz/docs
+Keywords: codex,guard,policy,agent,enforcement
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Operating System :: MacOS
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: custodian-kernel<0.6,>=0.5
+Dynamic: license-file
+
 # Custodian Codex Guard
 
 Policy guard for Codex CLI. Evaluates every coding-agent action (read, write,

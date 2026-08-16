@@ -1,19 +1,19 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "custodian-codex-guard"
-version = "0.1.4"
-description = "Policy guard for Codex CLI: evaluate coding-agent actions before execution"
+version = "0.2.0"
+description = "Policy guard for Codex CLI: evaluate coding-agent actions before execution (thin adapter on custodian-kernel)"
 requires-python = ">=3.11"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 license-files = ["LICENSE"]
-authors = [{name = "InovinLabs", email = "hello@inovinlabs.com"}]
+authors = [{name = "InovinLabs"}]
 keywords = ["codex", "guard", "policy", "agent", "enforcement"]
 dependencies = [
-    # custodian.codex_guard.mcp_server now imports custodian.guard_core.evaluation
-    # (added in Kernel 0.4.3) rather than defining evaluate_guard_action itself --
-    # see CHANGELOG.md's 0.4.3 entry.
-    "custodian-kernel>=0.4.3,<0.5",
-    "cryptography>=42.0",
+    "custodian-kernel>=0.5,<0.6",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -31,31 +31,36 @@ classifiers = [
 Homepage = "https://getcustodian.xyz"
 Repository = "https://github.com/KeyArgo/custodian-codex-guard"
 Documentation = "https://getcustodian.xyz/docs"
-Issues = "https://github.com/KeyArgo/custodian-codex-guard/issues"
-Security = "https://github.com/KeyArgo/custodian-codex-guard/blob/main/SECURITY.md"
 
 [project.scripts]
-custodian-codex = "custodian.codex_guard.cli:main"
-custodian-codex-guard-mcp = "custodian.codex_guard.mcp_server:main"
-custodian-codex-guard-hook = "custodian.codex_guard.hook:main"
+custodian-codex = "custodian.guards.codex.cli:main"
+custodian-codex-guard-hook = "custodian.guards.codex.hook:main"
+custodian-codex-guard-mcp = "custodian.guards.codex.mcp_server:main"
 
-[build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-include = ["custodian.codex_guard", "custodian.codex_guard.*"]
-namespaces = true
-
-[tool.setuptools.package-data]
-"custodian.codex_guard" = [
-    "*.md",
-    "bundled_plugin/.agents/plugins/marketplace.json",
-    "bundled_plugin/plugins/custodian-codex-guard/.mcp.json",
-    "bundled_plugin/plugins/custodian-codex-guard/.codex-plugin/plugin.json",
-    "bundled_plugin/plugins/custodian-codex-guard/README.md",
-    "bundled_plugin/plugins/custodian-codex-guard/skills/govern-codex/SKILL.md",
+[tool.setuptools]
+packages = [
+    "custodian",
+    "custodian.codex_guard",
+    "custodian.guards",
+    "custodian.guards.codex",
+    "custodian.guards.codex.bundled_plugin",
+    "custodian.guards.codex.bundled_plugin.plugins",
 ]
 
-[tool.setuptools.data-files]
-"share/man/man1" = ["docs/man/custodian-codex.1"]
+[tool.setuptools.package-data]
+# Explicit dot-segment patterns, not "bundled_plugin/**/*": Python's glob
+# (which setuptools' package-data resolution uses internally) never matches
+# a leading-dot path component via * or ** -- even with recursive=True --
+# so a wildcard-only pattern here silently drops .agents/, .codex-plugin/,
+# and .mcp.json from the wheel while still matching the plain-named files,
+# which is exactly what happened in the 2026-08-16 broken 0.2.0 release
+# (only README.md and SKILL.md made it into the wheel; the Codex CLI's
+# marketplace.json and plugin.json never did).
+"custodian.guards.codex" = [
+    "bundled_plugin/.agents/*",
+    "bundled_plugin/.agents/**/*",
+    "bundled_plugin/plugins/**/*",
+    "bundled_plugin/plugins/**/.*",
+    "bundled_plugin/plugins/*/.codex-plugin/*",
+    "bundled_plugin/plugins/*/.mcp.json",
+]
