@@ -1,0 +1,4 @@
+[console_scripts]
+custodian-codex = custodian.codex_guard.cli:main
+custodian-codex-guard-hook = custodian.codex_guard.hook:main
+custodian-codex-guard-mcp = custodian.codex_guard.mcp_server:main

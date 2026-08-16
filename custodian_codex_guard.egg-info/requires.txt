@@ -1,0 +1,2 @@
+custodian-kernel<0.5,>=0.4.2
+cryptography>=42.0

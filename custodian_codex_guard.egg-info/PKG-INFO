@@ -1,3 +1,31 @@
+Metadata-Version: 2.4
+Name: custodian-codex-guard
+Version: 0.1.2
+Summary: Policy guard for Codex CLI: evaluate coding-agent actions before execution
+Author-email: InovinLabs <hello@inovinlabs.com>
+License-Expression: MIT
+Project-URL: Homepage, https://getcustodian.xyz
+Project-URL: Repository, https://github.com/inovinlabs/custodian-codex-guard
+Project-URL: Documentation, https://getcustodian.xyz/docs
+Project-URL: Issues, https://github.com/inovinlabs/custodian-codex-guard/issues
+Project-URL: Security, https://github.com/inovinlabs/custodian-codex-guard/blob/main/SECURITY.md
+Keywords: codex,guard,policy,agent,enforcement
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Operating System :: MacOS
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: custodian-kernel<0.5,>=0.4.2
+Requires-Dist: cryptography>=42.0
+Dynamic: license-file
+
 # Custodian Codex Guard
 
 Policy guard for Codex CLI. Evaluates every coding-agent action (read, write,
@@ -9,8 +37,9 @@ Agents](https://youtu.be/lnIwDIbzZf0).
 
 ## Install
 
-Custodian Codex Guard 0.1.2 supports Linux and macOS with Python 3.11 through
-3.13. Windows support is not part of this package release.
+Custodian Codex Guard 0.1.2 is the next release candidate and depends on
+Custodian Kernel 0.4.2. Do not call it a release until the Linux, macOS, and
+Windows install checks have passed.
 
 ```bash
 python -m pip install custodian-codex-guard
@@ -44,10 +73,6 @@ It supplements Codex's sandbox and permissions; it does not replace operating
 system isolation or govern tools that are not routed through the installed
 hook/MCP boundary.
 
-This is an early technical beta. Managed-hook mode provides the strongest
-supported protection against removing the hook; users should still apply normal
-host, repository, and credential isolation controls.
-
 ## Remove
 
 ```bash
@@ -68,5 +93,5 @@ Report vulnerabilities privately using the instructions in
 private receipts in a public issue.
 
 - Documentation: https://getcustodian.xyz/docs
-- Source: https://github.com/KeyArgo/custodian-codex-guard
+- Source: https://github.com/inovinlabs/custodian-codex-guard
 - Package: https://pypi.org/project/custodian-codex-guard/
